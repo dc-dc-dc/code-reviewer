@@ -1,0 +1,8 @@
+[pkg]
+tool = "uv"
+
+[hooks.build]
+post = ["uv tool install ."]
+
+[plugins]
+enabled = []

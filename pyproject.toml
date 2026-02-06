@@ -1,0 +1,16 @@
+[project]
+name = "code-reviewer"
+version = "0.1.0"
+description = "AI-powered code review from git diffs"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["anthropic>=0.39.0", "openai>=1.50.0"]
+
+[project.scripts]
+code-reviewer = "code_reviewer.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.0.0", "pytest-mock>=3.12.0", "pytest-cov>=4.1.0"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=code_reviewer --cov-report=term-missing --cov-report=html --cov-fail-under=90"
