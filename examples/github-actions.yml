@@ -38,6 +38,7 @@ jobs:
           REVIEW_COMMENTS=$(echo "$COMMENTS" | jq '[.[] | select(.line != null) | {
             path: .file,
             line: .line,
+            side: "RIGHT",
             body: ("**" + (.severity // "suggestion") + "**: " + .comment)
           }]')
 
