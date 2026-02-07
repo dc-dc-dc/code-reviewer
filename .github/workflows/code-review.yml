@@ -34,18 +34,14 @@ jobs:
             exit 0
           fi
 
-          # Build the review comments payload
-          REVIEW_COMMENTS=$(echo "$COMMENTS" | jq '[.[] | select(.line != null) | {
-            path: .file,
-            line: .line,
-            side: "RIGHT",
-            body: ("**" + (.severity // "suggestion") + "**: " + .comment)
-          }]')
+          # Format all comments into the review body
+          BODY=$(echo "$COMMENTS" | jq -r '.[] |
+            "### " + (.severity // "suggestion") + "\n" +
+            "`" + .file + (if .line then ":" + (.line | tostring) else "" end) + "`\n\n" +
+            .comment + "\n"')
 
-          # Submit as a PR review with inline comments
-          jq -n \
-            --argjson comments "$REVIEW_COMMENTS" \
-            '{ event: "COMMENT", body: "Automated code review", comments: $comments }' \
-          | gh api \
-              "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
-              --input -
+          # Post as a PR review comment
+          gh api \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
+            -f event="COMMENT" \
+            -f body="$BODY"
