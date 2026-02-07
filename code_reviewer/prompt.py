@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 SYSTEM_PROMPT_BASE = """\
 You are an expert code reviewer. You will receive a git diff and optionally some context about the change.
 
