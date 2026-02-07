@@ -65,9 +65,69 @@ export CODE_REVIEWER_MODEL=codellama
 | `--guidelines` | `-g` | Path to a file containing review guidelines/rules |
 | `--json` | | Output review comments as JSON |
 
+## GitHub Actions
+
+Add automated code review to your PRs with inline comments. Add `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) as a repository secret, then create `.github/workflows/code-review.yml`:
+
+```yaml
+name: Code Review
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install code-reviewer
+        run: uv tool install https://github.com/dc-dc-dc/code-reviewer/releases/download/v0.1/code_reviewer-0.1.0-py3-none-any.whl
+
+      - name: Review
+        env:
+          CODE_REVIEWER_PROVIDER: anthropic
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          COMMENTS=$(git diff origin/main...HEAD | code-reviewer --json)
+
+          # Skip if no comments
+          if [ "$(echo "$COMMENTS" | jq length)" -eq 0 ]; then
+            echo "No review comments."
+            exit 0
+          fi
+
+          # Build the review comments payload
+          REVIEW_COMMENTS=$(echo "$COMMENTS" | jq '[.[] | select(.line != null) | {
+            path: .file,
+            line: .line,
+            body: ("**" + (.severity // "suggestion") + "**: " + .comment)
+          }]')
+
+          # Submit as a PR review with inline comments
+          jq -n \
+            --argjson comments "$REVIEW_COMMENTS" \
+            '{ event: "COMMENT", body: "Automated code review", comments: $comments }' \
+          | gh api \
+              "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
+              --input -
+```
+
+See [examples/github-actions.yml](examples/github-actions.yml) for the full workflow file.
+
 ## Development
 
 ```bash
-uv sync
-uv run pytest
+pkg install
+pkg test
+pkg build
 ```
