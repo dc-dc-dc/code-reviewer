@@ -4,6 +4,9 @@ AI-powered code review from git diffs. Pipe a diff in, get structured review com
 
 Supports Anthropic (Claude), OpenAI, and local OpenAI-compatible endpoints (Ollama, vLLM, LM Studio).
 
+
+[![Test](https://github.com/dc-dc-dc/code-reviewer/actions/workflows/test.yml/badge.svg)](https://github.com/dc-dc-dc/code-reviewer/actions/workflows/test.yml)
+
 ## Install
 
 ```bash
