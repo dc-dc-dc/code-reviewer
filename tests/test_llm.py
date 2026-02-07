@@ -5,8 +5,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from code_reviewer.llm import (
+    BATCH_POLL_INTERVAL,
     DEFAULT_LOCAL_BASE_URL,
     DEFAULT_MODELS,
+    _call_anthropic,
     _get_model,
     _get_provider,
     _parse_comments,
@@ -63,6 +65,118 @@ class TestParseComments:
         raw = json.dumps([{"file": "c.py", "comment": "test"}])
         result = _parse_comments(raw)
         assert result[0].line is None
+
+    def test_fallback_key_message(self):
+        raw = json.dumps([{"file": "d.py", "message": "use message key"}])
+        result = _parse_comments(raw)
+        assert result[0].comment == "use message key"
+
+    def test_fallback_key_description(self):
+        raw = json.dumps([{"file": "d.py", "description": "use desc key"}])
+        result = _parse_comments(raw)
+        assert result[0].comment == "use desc key"
+
+    def test_fallback_key_text(self):
+        raw = json.dumps([{"file": "d.py", "text": "use text key"}])
+        result = _parse_comments(raw)
+        assert result[0].comment == "use text key"
+
+    def test_skips_item_with_no_comment(self):
+        raw = json.dumps([{"file": "d.py", "line": 1}])
+        result = _parse_comments(raw)
+        assert result == []
+
+    def test_missing_file_defaults_to_unknown(self):
+        raw = json.dumps([{"comment": "orphan comment"}])
+        result = _parse_comments(raw)
+        assert result[0].file == "unknown"
+
+
+class TestCallAnthropic:
+    def _make_mock_client(self, processing_calls_before_done=0, result_type="succeeded", result_text="[]"):
+        client = MagicMock()
+
+        batch_pending = MagicMock()
+        batch_pending.processing_status = "in_progress"
+        batch_pending.id = "batch_123"
+
+        batch_done = MagicMock()
+        batch_done.processing_status = "ended"
+        batch_done.id = "batch_123"
+
+        client.messages.batches.create.return_value = batch_pending
+
+        retrieve_returns = [batch_pending] * processing_calls_before_done + [batch_done]
+        client.messages.batches.retrieve.side_effect = retrieve_returns
+
+        result_item = MagicMock()
+        result_item.custom_id = "review"
+        result_item.result.type = result_type
+        if result_type == "succeeded":
+            result_item.result.message.content = [MagicMock(text=result_text)]
+        client.messages.batches.results.return_value = [result_item]
+
+        return client
+
+    @patch("code_reviewer.llm.time.sleep")
+    def test_batch_success(self, mock_sleep):
+        client = self._make_mock_client(
+            processing_calls_before_done=1,
+            result_text='[{"file": "a.py", "line": 1, "severity": "error", "comment": "bug"}]',
+        )
+
+        with patch("code_reviewer.llm.Anthropic", return_value=client):
+            result = _call_anthropic("system", "user", "model")
+
+        assert "bug" in result
+        client.messages.batches.create.assert_called_once()
+        assert client.messages.batches.retrieve.call_count == 2
+        mock_sleep.assert_called_once_with(BATCH_POLL_INTERVAL)
+
+    @patch("code_reviewer.llm.time.sleep")
+    def test_batch_immediate_completion(self, mock_sleep):
+        client = self._make_mock_client(processing_calls_before_done=0, result_text="[]")
+
+        with patch("code_reviewer.llm.Anthropic", return_value=client):
+            result = _call_anthropic("system", "user", "model")
+
+        assert result == "[]"
+        mock_sleep.assert_not_called()
+
+    @patch("code_reviewer.llm.time.sleep")
+    def test_batch_timeout(self, mock_sleep):
+        client = MagicMock()
+        batch = MagicMock()
+        batch.id = "batch_123"
+        batch.processing_status = "in_progress"
+        client.messages.batches.create.return_value = batch
+        client.messages.batches.retrieve.return_value = batch
+
+        with patch("code_reviewer.llm.Anthropic", return_value=client):
+            with pytest.raises(TimeoutError):
+                _call_anthropic("system", "user", "model")
+
+    @patch("code_reviewer.llm.time.sleep")
+    def test_batch_errored_result(self, mock_sleep):
+        client = self._make_mock_client(result_type="errored")
+
+        with patch("code_reviewer.llm.Anthropic", return_value=client):
+            with pytest.raises(RuntimeError, match="errored"):
+                _call_anthropic("system", "user", "model")
+
+    @patch("code_reviewer.llm.time.sleep")
+    def test_batch_no_results(self, mock_sleep):
+        client = MagicMock()
+        batch = MagicMock()
+        batch.id = "batch_123"
+        batch.processing_status = "ended"
+        client.messages.batches.create.return_value = batch
+        client.messages.batches.retrieve.return_value = batch
+        client.messages.batches.results.return_value = []
+
+        with patch("code_reviewer.llm.Anthropic", return_value=client):
+            with pytest.raises(RuntimeError, match="no results"):
+                _call_anthropic("system", "user", "model")
 
 
 class TestReview:

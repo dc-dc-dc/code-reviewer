@@ -30,7 +30,7 @@ class TestFormatPlain:
         assert ":None" not in result
 
     def test_severity_symbols(self):
-        for severity in ("error", "warning", "suggestion", "nitpick"):
+        for severity in ("error", "warning", "suggestion"):
             result = format_plain([_make_comment(severity=severity)])
             assert f"[{severity}]" in result
 

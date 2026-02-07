@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 class ReviewComment:
     file: str
     line: int | None
-    severity: str  # error, warning, suggestion, nitpick
+    severity: str  # error, warning, suggestion
     comment: str
 
 
@@ -16,7 +16,6 @@ SEVERITY_SYMBOLS = {
     "error": "\u2718",
     "warning": "\u26a0",
     "suggestion": "\u25cb",
-    "nitpick": "\u00b7",
 }
 
 
